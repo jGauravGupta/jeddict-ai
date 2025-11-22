@@ -13,21 +13,15 @@
  * License for the specific language governing permissions and limitations under
  * the License.
  */
-package io.github.jeddict.ai.agent;
+package io.github.jeddict.ai.agent.pair;
 
 import dev.langchain4j.agentic.AgenticServices;
-import dev.langchain4j.data.message.ChatMessage;
-import dev.langchain4j.data.message.ChatMessageType;
-import dev.langchain4j.data.message.SystemMessage;
-import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.listener.ChatModelRequestContext;
-import static io.github.jeddict.ai.agent.PairProgrammer.ELEMENT_CLASS;
-import static io.github.jeddict.ai.agent.PairProgrammer.ELEMENT_MEMBER;
-import static io.github.jeddict.ai.agent.PairProgrammer.ELEMENT_METHOD;
-import io.github.jeddict.ai.models.DummyChatModel;
-import io.github.jeddict.ai.test.DummyChatModelListener;
-import io.github.jeddict.ai.test.TestBase;
-import java.util.List;
+import static io.github.jeddict.ai.agent.pair.TechWriter.ELEMENT_CLASS;
+import static io.github.jeddict.ai.agent.pair.TechWriter.ELEMENT_MEMBER;
+import static io.github.jeddict.ai.agent.pair.TechWriter.ELEMENT_METHOD;
+import static io.github.jeddict.ai.agent.pair.TechWriter.USER_MESSAGE_DESCRIBE;
+import static io.github.jeddict.ai.agent.pair.TechWriter.USER_MESSAGE_JAVADOC;
 import static org.assertj.core.api.BDDAssertions.then;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -35,28 +29,24 @@ import org.junit.jupiter.api.Test;
 /**
  *
  */
-public class PairProgrammerTest extends TestBase {
+public class TechWriterTest extends PairProgrammerTestBase {
 
-    final String TEXT = "use mock 'hello world.txt'";
     final String JAVADOC = "this is a javadoc comment";
-
-    DummyChatModel model;
-    DummyChatModelListener listener;
-    PairProgrammer pair;
+    private TechWriter pair;
 
     @BeforeEach
+    @Override
     public void beforeEach() throws Exception {
         super.beforeEach();
 
-        model = new DummyChatModel();
-        listener = new DummyChatModelListener();
-
-        model.addListener(listener);
-
-        pair = AgenticServices.agentBuilder(PairProgrammer.class)
+        pair = AgenticServices.agentBuilder(TechWriter.class)
             .chatModel(model)
             .build();
+    }
 
+    @Test
+    public void pair_is_a_PairProgrammer() {
+        then(pair).isInstanceOf(PairProgrammer.class);
     }
 
     @Test
@@ -101,6 +91,12 @@ public class PairProgrammerTest extends TestBase {
         enhanceJavadoc_returns_AI_provided_response(ELEMENT_MEMBER, TEXT, JAVADOC, "\n- global rule 1", "\n- project rule 1", pair::enhanceMemberJavadoc);
     }
 
+    @Test
+    public void describeJavaClass_AI_provided_response() {
+        describeCode_returns_AI_provided_response(TEXT, "no rules", pair::describeCode);
+        describeCode_returns_AI_provided_response(TEXT, "\n- global rule 1", pair::describeCode);
+    }
+
     // --------------------------------------------------------- private methods
 
     @FunctionalInterface
@@ -111,6 +107,11 @@ public class PairProgrammerTest extends TestBase {
     @FunctionalInterface
     private interface JavadocEnhancer {
         String apply(String code, String javadoc, String globalRules, String projectRules);
+    }
+
+    @FunctionalInterface
+    private interface CodeDescriber {
+        String apply(String code, String sessionRules);
     }
 
     private void generateJavadoc_returns_AI_provided_response(
@@ -130,14 +131,15 @@ public class PairProgrammerTest extends TestBase {
         //
         final ChatModelRequestContext request = listener.lastRequestContext.get();
         thenMessagesMatch(
-                request.chatRequest().messages(),
-                PairProgrammer.SYSTEM_MESSAGE
-                        .replace("{{globalRules}}", (globalRules.trim().isEmpty()) ? "no rules" : globalRules)
-                        .replace("{{projectRules}}", (projectRules.trim().isEmpty()) ? "no rules" : projectRules),
-                PairProgrammer.USER_MESSAGE
-                        .replace("{{element}}", element)
-                        .replace("{{code}}", code)
-                        .replace("{{javadoc}}", "")
+            request.chatRequest().messages(),
+            TechWriter.SYSTEM_MESSAGE
+                .replace("{{globalRules}}", (globalRules.trim().isEmpty()) ? "no rules" : globalRules)
+                .replace("{{projectRules}}", (projectRules.trim().isEmpty()) ? "no rules" : projectRules)
+                .replace("{{sessionRules}}", "no rules"),
+            TechWriter.USER_MESSAGE
+                .replace("{{prompt}}", USER_MESSAGE_JAVADOC.formatted(element))
+                .replace("{{code}}", code)
+                .replace("{{javadoc}}", "")
         );
     }
 
@@ -163,34 +165,45 @@ public class PairProgrammerTest extends TestBase {
         final ChatModelRequestContext request = listener.lastRequestContext.get();
         thenMessagesMatch(
             request.chatRequest().messages(),
-            PairProgrammer.SYSTEM_MESSAGE
+            TechWriter.SYSTEM_MESSAGE
                 .replace("{{globalRules}}", (globalRules.trim().isEmpty()) ? "no rules" : globalRules)
-                .replace("{{projectRules}}", (projectRules.trim().isEmpty()) ? "no rules" : projectRules),
-            PairProgrammer.USER_MESSAGE
-                .replace("{{element}}", element)
+                .replace("{{projectRules}}", (projectRules.trim().isEmpty()) ? "no rules" : projectRules)
+                .replace("{{sessionRules}}", "no rules"),
+            TechWriter.USER_MESSAGE
+                .replace("{{prompt}}", USER_MESSAGE_JAVADOC.formatted(element))
                 .replace("{{code}}", code)
                 .replace("{{javadoc}}", javadoc)
         );
     }
 
-    private void thenMessagesMatch(
-        final List<ChatMessage> messages, final String system, final String user
+    private void describeCode_returns_AI_provided_response(
+        final String code,
+        final String sessionRules,
+        final CodeDescriber describer
     ) {
-        boolean systemOK = false, userOK = false;
-        int i = 0;
+        //
+        // the model has been invoked and its answer returned
+        //
+        //
+        // invoke the agent
+        //
+        describer.apply(code, sessionRules);
 
-        while (i<messages.size()) {
-            final ChatMessage msg = messages.get(i++);
-            LOG.info(() -> String.valueOf(msg));
-            if (msg.type() == ChatMessageType.SYSTEM) {
-                systemOK = systemOK || ((SystemMessage)msg).equals(new SystemMessage(system));
-            } else if (msg.type() == ChatMessageType.USER) {
-                LOG.info(() -> '\n' + String.valueOf(msg) + '\n' + String.valueOf(new UserMessage(user)));
-                userOK = userOK || ((UserMessage)msg).equals(new UserMessage(user));
-            }
-        }
-
-        then(systemOK).isTrue();
-        then(userOK).isTrue();
+        //
+        // proper prompt messages has been generated and provided;
+        //
+        final ChatModelRequestContext request = listener.lastRequestContext.get();
+        thenMessagesMatch(
+            request.chatRequest().messages(),
+            TechWriter.SYSTEM_MESSAGE
+                .replace("{{globalRules}}", "no rules")
+                .replace("{{projectRules}}", "no rules")
+                .replace("{{sessionRules}}", sessionRules),
+            TechWriter.USER_MESSAGE
+                .replace("{{prompt}}", USER_MESSAGE_DESCRIBE)
+                .replace("{{code}}", code)
+                .replace("{{javadoc}}", "")
+        );
     }
+
 }

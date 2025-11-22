@@ -3,7 +3,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>io.github.jeddict</groupId>
     <artifactId>jeddict-ai</artifactId>
-    <version>3.2</version>
+    <version>3.2.1</version>
     <packaging>nbm</packaging>
     <name>Jeddict AI Assistant</name>
     <description>Jeddict AI Assistant is a powerful and intuitive plugin designed for Apache NetBeans IDE.
@@ -45,7 +45,7 @@
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.release>17</maven.compiler.release>
-        <javalang4j.version>1.7.1</javalang4j.version>
+        <javalang4j.version>1.8.0</javalang4j.version>
     </properties>
 
     <build>
@@ -216,6 +216,8 @@
                         --add-opens=java.desktop/sun.awt.X11=ALL-UNNAMED
                         --add-opens=java.desktop/java.awt=ALL-UNNAMED
                         --add-opens=java.base/java.lang.reflect=ALL-UNNAMED
+                        --add-opens=java.base/java.lang=ALL-UNNAMED
+                        --add-opens=java.base/java.util=ALL-UNNAMED
                         --add-opens=java.desktop/sun.java2d=ALL-UNNAMED
                         --add-exports=java.desktop/sun.java2d=ALL-UNNAMED
                         --add-exports=java.desktop/sun.awt.image=ALL-UNNAMED
@@ -285,7 +287,7 @@
         <dependency>
             <groupId>dev.langchain4j</groupId>
             <artifactId>langchain4j-agentic</artifactId>
-            <version>${javalang4j.version}-beta14</version>
+            <version>${javalang4j.version}-beta15</version>
             <type>jar</type>
         </dependency>
         <dependency>
@@ -306,7 +308,7 @@
         <dependency>
             <groupId>org.commonmark</groupId>
             <artifactId>commonmark</artifactId>
-            <version>0.21.0</version>
+            <version>0.27.0</version>
         </dependency>
         <dependency>
             <groupId>org.json</groupId>
@@ -666,6 +668,12 @@
             <version>3.27.4</version>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <groupId>jakarta.ws.rs</groupId>
+            <artifactId>jakarta.ws.rs-api</artifactId>
+            <version>4.0.0</version>
+        </dependency>
+
         <!--
             Headless testing
         -->

@@ -16,7 +16,8 @@
 package io.github.jeddict.ai.lang;
 
 import io.github.jeddict.ai.agent.AbstractTool;
-import io.github.jeddict.ai.agent.PairProgrammer;
+import io.github.jeddict.ai.agent.pair.PairProgrammer;
+import static io.github.jeddict.ai.agent.pair.PairProgrammer.Specialist.TEST;
 import io.github.jeddict.ai.settings.PreferencesManager;
 import io.github.jeddict.ai.test.DummyTool;
 import io.github.jeddict.ai.test.TestBase;
@@ -88,26 +89,53 @@ public class JeddictBrainTest extends TestBase {
 
         final JeddictBrain brain = new JeddictBrain(N, false, List.of());
 
-        then(brain.progressListeners.getPropertyChangeListeners()).isEmpty();
+        then(brain.getSupport().getPropertyChangeListeners()).isEmpty();
 
         brain.addProgressListener(L1);
         brain.addProgressListener(L2);
-        then(brain.progressListeners.getPropertyChangeListeners()).containsExactlyInAnyOrder(L1, L2);
+        then(brain.getSupport().getPropertyChangeListeners()).containsExactlyInAnyOrder(L1, L2);
 
         brain.removeProgressListener(L2);
-        then(brain.progressListeners.getPropertyChangeListeners()).containsExactly(L1);
+        then(brain.getSupport().getPropertyChangeListeners()).containsExactly(L1);
 
         brain.removeProgressListener(L1);
-        then(brain.progressListeners.getPropertyChangeListeners()).isEmpty();
+        then(brain.getSupport().getPropertyChangeListeners()).isEmpty();
     }
 
     @Test
     public void get_new_pair_programmer() {
         final JeddictBrain brain = new JeddictBrain(false);
 
-        final PairProgrammer pair = brain.pairProgrammer();
+        for (PairProgrammer.Specialist s: PairProgrammer.Specialist.values()) {
+            final Object pair1 = brain.pairProgrammer(s);
+            final Object pair2 = brain.pairProgrammer(s);
 
-        then(pair).isNotNull();
-        then(brain.pairProgrammer()).isNotSameAs(pair);  // create a new pair every call
+            then(pair1).isNotNull(); then(pair2).isNotNull();
+            if (s == TEST) {
+                then(pair1).isInstanceOf(s.specialistClass);
+                then(pair2).isInstanceOf(s.specialistClass);
+            } else {
+                then(pair1.getClass().getInterfaces()).contains(s.specialistClass);
+                then(pair2.getClass().getInterfaces()).contains(s.specialistClass);
+            }
+            then(pair2).isNotSameAs(pair1);  // create a new pair every call
+        }
+    }
+
+    @Test
+    public void with_and_without_memory() {
+        final JeddictBrain brain = new JeddictBrain(false);
+
+        //
+        // The default is no memory
+        //
+        then(brain.memorySize()).isEqualTo(0);
+
+        then(brain.withMemory(10)).isEqualTo(brain);
+        then(brain.memorySize()).isEqualTo(10);
+
+        thenThrownBy(() -> brain.withMemory(-1))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessage("size must be greather than 0 (where 0 means no memory)");
     }
 }
