@@ -18,10 +18,16 @@ package io.github.jeddict.ai.agent;
 import com.github.caciocavallosilano.cacio.ctc.junit.CacioTest;
 import io.github.jeddict.ai.test.TestBase;
 import java.io.File;
+import java.nio.file.Paths;
 import org.apache.commons.io.FileUtils;
 import static org.assertj.core.api.BDDAssertions.then;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
+import org.netbeans.api.project.Project;
+import org.netbeans.api.project.ProjectManager;
+import org.openide.filesystems.FileObject;
+import org.openide.filesystems.FileUtil;
+import org.openide.util.Lookup;
 
 @CacioTest
 public class ExploreToolsTest extends TestBase {
@@ -110,6 +116,44 @@ public class ExploreToolsTest extends TestBase {
 
         final ExplorationTools tools = new ExplorationTools(projectDir, null);
         then(tools.listMethodsInFile(path)).contains("Method: sayHello");
+    }
+
+    @Test
+    public void searchSymbol_with_no_sources_returns_message()
+    throws Exception {
+        final ExplorationTools tools = new ExplorationTools(projectDir, Lookup.getDefault());
+
+        then(tools.searchSymbol("Anything"))
+                .isEqualTo("No Java sources found in project (not a Java project).");
+    }
+
+    @Test
+    public void searchSymbol_in_src_returns_found_symbol()
+    throws Exception {
+        final FileObject currentProjectDir = FileUtil.toFileObject(Paths.get(".").toAbsolutePath().normalize());
+        final Project project = ProjectManager.getDefault().findProject(currentProjectDir);
+
+        final ExplorationTools tools = new ExplorationTools(currentProjectDir.getPath(), project.getLookup());
+
+        String symbolSearchResult = tools.searchSymbol("ExplorationTools");
+        then(symbolSearchResult)
+            .contains("Method: io.github.jeddict.ai.agent.ExplorationTools.ExplorationTools")
+            .contains("Class: io.github.jeddict.ai.agent.ExplorationTools")
+            .contains("Method: io.github.jeddict.ai.agent.ExplorationTools.ExplorationTools")
+            .contains("Method: io.github.jeddict.ai.hints.AssistantChatManager.ExplorationTools");
+    }
+
+    @Test
+    public void searchSymbol_in_test_returns_found_symbol()
+    throws Exception {
+        final FileObject currentProjectDir = FileUtil.toFileObject(Paths.get(".").toAbsolutePath().normalize());
+        final Project project = ProjectManager.getDefault().findProject(currentProjectDir);
+
+        final ExplorationTools tools = new ExplorationTools(currentProjectDir.getPath(), project.getLookup());
+
+        String symbolSearchResult = tools.searchSymbol("SayHello");
+        then(symbolSearchResult)
+            .contains("Class: SayHello");
     }
 
     @Test
