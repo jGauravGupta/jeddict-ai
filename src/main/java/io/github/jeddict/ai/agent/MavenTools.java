@@ -50,7 +50,11 @@ public class MavenTools extends AbstractBuildTool {
 
     @Tool(
         name = "addMavenDependency",
-        value = "Add a dependency to the pom.xml file"
+        value = """
+        Add a dependency to the pom.xml file of the Maven project.
+        Use this when the task requires a new library that is not yet in the project dependencies.
+        Check if the dependency exists first using mavenDependencyExists before calling this.
+        """
     )
     @ToolPolicy(READWRITE)
     public String addDependency(String groupId, String artifactId, String version)
@@ -61,7 +65,11 @@ public class MavenTools extends AbstractBuildTool {
 
     @Tool(
         name = "addMavenDependencyWithScope",
-        value = "Add a dependency with scope to the pom.xml file"
+        value = """
+        Add a dependency with a specific scope (e.g., test, provided, runtime) to the pom.xml file.
+        Use this instead of addMavenDependency when the dependency should be scoped (e.g., test dependencies).
+        Check if the dependency exists first using mavenDependencyExists before calling this.
+        """
     )
     @ToolPolicy(READWRITE)
     public String addDependencyWithScope(String groupId, String artifactId, String version, String scope)
@@ -137,7 +145,11 @@ public class MavenTools extends AbstractBuildTool {
 
     @Tool(
         name = "removeMavenDependency",
-        value = "Remove a dependency from the pom.xml file"
+        value = """
+        Remove an existing dependency from the pom.xml file of the Maven project.
+        Use this when the task requires removing an unused or conflicting library.
+        Throws an error if the dependency is not found.
+        """
     )
     @ToolPolicy(READWRITE)
     public String removeDependency(String groupId, String artifactId) throws Exception {
@@ -178,7 +190,10 @@ public class MavenTools extends AbstractBuildTool {
 
     @Tool(
         name = "MavenListDependenciesTool_listDependencies",
-        value = "List all dependencies in the pom.xml file"
+        value = """
+        List all dependencies declared in the pom.xml file of the Maven project.
+        Use this to discover what libraries are already in the project before adding or removing dependencies.
+        """
     )
     @ToolPolicy(READWRITE)
     public String listDependencies() throws Exception {
@@ -220,7 +235,11 @@ public class MavenTools extends AbstractBuildTool {
 
     @Tool(
         name = "updateMavenDependencyVersion",
-        value = "Update the version of an existing dependency in the pom.xml file"
+        value = """
+        Update the version of an existing dependency in the pom.xml file of the Maven project.
+        Use this when the task requires upgrading or downgrading a library version.
+        Throws an error if the dependency is not found.
+        """
     )
     @ToolPolicy(READWRITE)
     public String updateDependencyVersion(String groupId, String artifactId, String newVersion)
@@ -263,7 +282,11 @@ public class MavenTools extends AbstractBuildTool {
 
     @Tool(
         name= "mavenDependencyExists",
-        value= "Check if a dependency exists in the pom.xml file"
+        value= """
+        Check if a dependency already exists in the pom.xml file of the Maven project.
+        Always call this before adding a dependency to avoid duplicates.
+        Returns true if the dependency exists, false otherwise.
+        """
     )
     @ToolPolicy(READONLY)
     public boolean dependencyExists(String groupId, String artifactId)

@@ -35,7 +35,11 @@ public class ProjectTools extends AbstractTool {
 
     @Tool(
         name = "projectInfo",
-        value = "Return information about the project: jdk version, j2ee version"
+        value = """
+        Returns information about the project: JDK version, J2EE version, build system, and other metadata.
+        Use this at the start of any task that requires understanding the project environment,
+        such as choosing the right Java APIs or build commands.
+        """
     )
     @ToolPolicy(READONLY)
     public String projectInfo()

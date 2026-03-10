@@ -108,7 +108,11 @@ public class ExplorationTools extends AbstractCodeTool {
      * @param path relative path to the Java file
      * @return names of all top-level classes, or a message if none found
      */
-    @Tool("JAVA ONLY: List all classes declared in a given Java file by path")
+    @Tool("""
+    JAVA ONLY: List all top-level classes declared in a given Java source file by its relative path.
+    Use this to discover what classes exist in a file before reading its full content.
+    Returns one line per class in the format: Class: fully.qualified.ClassName
+    """)
     @ToolPolicy(READONLY)
     public String listClassesInFile(String path) throws Exception {
 
@@ -157,7 +161,11 @@ public class ExplorationTools extends AbstractCodeTool {
      * @param path relative path to the Java file
      * @return method signatures, or a message if none found
      */
-    @Tool("JAVA ONLY: List all methods of a class in a given Java file by path")
+    @Tool("""
+    JAVA ONLY: List all methods and constructors declared in a given Java source file by its relative path.
+    Use this to discover what methods exist in a class before reading the full file.
+    Returns one line per method in the format: Method: methodSignature
+    """)
     @ToolPolicy(READONLY)
     public String listMethodsInFile(String path) throws Exception {
 
@@ -249,10 +257,14 @@ public class ExplorationTools extends AbstractCodeTool {
      * search for
      * @return matching symbols found in the Java source code
      */
-    @Tool("JAVA ONLY: Search for a symbol (class, method, or field) in the whole project " +
-      "Returns one result per line prefixed with Class:, Method:, or Field:. " +
-      "If no symbol is found, returns 'No matches found.'. " +
-      "If the project has no Java sources, returns an explanatory message.")
+    @Tool("""
+    JAVA ONLY: Search the entire project for a Java symbol (class, method, or field) by its simple name.
+    Use this when you need to locate where a class, method, or field is defined in the project.
+    Never guess the file location — always call this tool to find the symbol.
+    Returns one result per line prefixed with Class:, Method:, or Field:.
+    If no symbol is found, returns 'No matches found.'.
+    If the project has no Java sources, returns an explanatory message.
+    """)
     @ToolPolicy(READONLY)
     public String searchSymbol(String symbolName)
     throws Exception {
@@ -358,12 +370,12 @@ public class ExplorationTools extends AbstractCodeTool {
      * @param symbolName Java symbol name
      * @return formatted usage list
      */
-    @Tool(
-            "JAVA ONLY: Find all usages of a Java class, method, or field. "
-            + "Output format: one usage per line prefixed with 'Usage: ', followed by a "
-            + "description of where and how the symbol is used. "
-            + "If no usages are found, returns 'No usages found.'."
-    )
+    @Tool("""
+    JAVA ONLY: Find all usages of a Java class, method, or field in the project.
+    Use this to understand how a symbol is used before renaming, refactoring, or deleting it.
+    Returns one usage per line prefixed with 'Usage: ', followed by a description of where the symbol is used.
+    If no usages are found, returns 'No usages found.'.
+    """)
     @ToolPolicy(READONLY)
     public String findUsages(String path, String symbolName)
     throws Exception {

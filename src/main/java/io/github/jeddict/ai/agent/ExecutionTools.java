@@ -55,13 +55,21 @@ public class ExecutionTools extends AbstractTool {
         log = new LogPrinter(projectName);
     }
 
-    @Tool("Build the project and return full log")
+    @Tool("""
+    Build the project and return the full build log.
+    Use this to compile the project and detect compilation errors after making code changes.
+    Always build before testing to ensure the code compiles successfully.
+    """)
     @ToolPolicy(READWRITE)
     public String buildProject() {
         return runCommand(buildCommand, "Building");
     }
 
-    @Tool("Run project tests and return full log")
+    @Tool("""
+    Run the project tests and return the full test log.
+    Use this to verify that the project tests pass after making code changes.
+    Review the log to identify any failing tests and fix them.
+    """)
     @ToolPolicy(READWRITE)
     public String testProject() {
         return runCommand(testCommand, "Testing");
