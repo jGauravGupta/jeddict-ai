@@ -48,7 +48,11 @@ public class FileSystemTools extends AbstractCodeTool {
      * @param path the file path relative to the project
      * @return the file content, or an error message if it could not be read
      */
-    @Tool("Read the content of a file by path")
+    @Tool("""
+    Reads the contents of a file in the project by its relative path.
+    Use this whenever you need to inspect source code, configuration, or any project file.
+    Never guess file contents — always call this tool to read the actual content.
+    """)
     @ToolPolicy(READONLY)
     public String readFile(final String path) throws ToolExecutionException {
         progress("📖 Reading file " + path);
@@ -129,7 +133,11 @@ public class FileSystemTools extends AbstractCodeTool {
      * @param pattern the regex pattern to search for
      * @return all matches with their offsets, or a message if none were found
      */
-    @Tool("Search for a regex pattern in a file by path")
+    @Tool("""
+    Search for a regex pattern inside a specific file by path.
+    Use this to locate a class, method, field, or any text pattern within a known file.
+    Returns all matches with their character offsets.
+    """)
     @ToolPolicy(READONLY)
     public String searchInFile(String path, String pattern) throws ToolExecutionException {
         progress("🔎 Looking for '" + pattern + "' inside '" + path + "'");
@@ -161,8 +169,10 @@ public class FileSystemTools extends AbstractCodeTool {
      */
     @Tool(
     """
-    Replace parts of a file content matching a literal string with replacement text
-    with no user interaction. Special regex characters are escaped.
+    Replace a literal text snippet in a file with new text, with no user interaction.
+    Use this to make targeted edits to a file when you know the exact text to replace.
+    Prefer this over replaceSnippetByRegex when no regex features are needed.
+    Special regex characters in the search text are automatically escaped.
     """)
     @ToolPolicy(READWRITE)
     public String replaceSnippetByLiteral(String path, String literalText, String replacement)
@@ -179,7 +189,11 @@ public class FileSystemTools extends AbstractCodeTool {
      * @param replacement the replacement text
      * @return a status message
      */
-    @Tool("Replace parts of a file content matching a regex pattern with replacement text  with no user interaction")
+    @Tool("""
+    Replace parts of a file content matching a regex pattern with replacement text, with no user interaction.
+    Use this to make targeted edits using regex when the change spans variable content.
+    Use replaceSnippetByLiteral instead when no regex features are needed.
+    """)
     @ToolPolicy(READWRITE)
     public String replaceSnippetByRegex(
         final String path, final String regexPattern, final String replacement
@@ -216,7 +230,11 @@ public class FileSystemTools extends AbstractCodeTool {
      * @param newContent the new content to write
      * @return a status message
      */
-    @Tool("Replace the full content of a file by path with new text with no user interaction")
+    @Tool("""
+    Replace the entire content of a file with new text, with no user interaction.
+    Use this when rewriting an entire file from scratch.
+    Prefer replaceSnippetByLiteral or replaceSnippetByRegex for smaller targeted edits.
+    """)
     @ToolPolicy(READWRITE)
     public String replaceFileContent(final String path, final String newContent)
     throws ToolExecutionException {
@@ -241,7 +259,11 @@ public class FileSystemTools extends AbstractCodeTool {
      * @param content optional content to write into the file
      * @return a status message
      */
-    @Tool("Create a new file at the given path with optional content with no user interaction")
+    @Tool("""
+    Create a new file at the given relative path with optional initial content, with no user interaction.
+    Use this when the task requires adding a new source file, configuration file, or resource.
+    Fails if the file already exists.
+    """)
     @ToolPolicy(READWRITE)
     public String createFile(String path, String content) throws ToolExecutionException {
         progress("📄 Creating file " + path);
@@ -273,7 +295,11 @@ public class FileSystemTools extends AbstractCodeTool {
      * @param path the file path relative to the project
      * @return a status message
      */
-    @Tool("Delete a file at the given path")
+    @Tool("""
+    Delete a file at the given relative path.
+    Use this when the task requires removing an existing project file.
+    Fails if the file does not exist.
+    """)
     @ToolPolicy(READWRITE)
     public String deleteFile(String path) throws ToolExecutionException {
         progress("🗑️ Deleting file " + path);
@@ -347,7 +373,11 @@ public class FileSystemTools extends AbstractCodeTool {
      *
      * @return a status message
      */
-    @Tool("Create a new directory at the given path")
+    @Tool("""
+    Create a new directory (including any missing parent directories) at the given relative path.
+    Use this before creating files in a directory that does not yet exist.
+    Fails if the directory already exists.
+    """)
     @ToolPolicy(READWRITE)
     public String createDirectory(String path) throws ToolExecutionException {
         progress("📂 Creating new directory " + path);
@@ -377,7 +407,11 @@ public class FileSystemTools extends AbstractCodeTool {
      * @param path the directory path relative to the project
      * @return a status message
      */
-    @Tool("Delete a directory at the given path (must be empty)")
+    @Tool("""
+    Delete an empty directory at the given relative path.
+    Use this when cleaning up directories that are no longer needed.
+    The directory must be empty; fails if the path does not exist or is not a directory.
+    """)
     @ToolPolicy(READWRITE)
     public String deleteDirectory(final String path) throws ToolExecutionException {
         progress("🗑️ Deleting directory " + path);

@@ -65,7 +65,10 @@ public class RefactoringTools extends AbstractCodeTool {
      * @param path relative path to the Java file
      * @return status message
      */
-    @Tool("Format a Java file by path using NetBeans code formatter")
+    @Tool("""
+    JAVA ONLY: Format a Java source file using the NetBeans code formatter.
+    Use this after modifying a Java file to ensure proper indentation and code style.
+    """)
     @ToolPolicy(READWRITE)
     public String formatFile(String path) throws Exception {
         progress("Formatting " + path);
@@ -75,7 +78,10 @@ public class RefactoringTools extends AbstractCodeTool {
         }, true);
     }
 
-    @Tool("Rename a class in a Java file")
+    @Tool("""
+    JAVA ONLY: Rename a class in a Java source file and update all its usages across the project.
+    Use this when the task requires renaming a class as part of a refactoring.
+    """)
     @ToolPolicy(READWRITE)
     public String renameClass(String path, String oldName, String newName) throws Exception {
         progress("Renaming class " + oldName + " -> " + newName);
@@ -107,7 +113,10 @@ public class RefactoringTools extends AbstractCodeTool {
         }, true);
     }
 
-    @Tool("Rename a method in a Java file")
+    @Tool("""
+    JAVA ONLY: Rename a method in a Java class and update all its usages across the project.
+    Use this when the task requires renaming a method as part of a refactoring.
+    """)
     @ToolPolicy(READWRITE)
     public String renameMethod(String path, String className, String oldMethod, String newMethod)
             throws Exception {
@@ -139,7 +148,10 @@ public class RefactoringTools extends AbstractCodeTool {
         }, true);
     }
 
-    @Tool("Move a class to another package")
+    @Tool("""
+    JAVA ONLY: Move a Java class to a different package and update all its import statements across the project.
+    Use this when the task requires moving a class to reorganize the package structure.
+    """)
     @ToolPolicy(READWRITE)
     public String moveClass(String path, String className, String newPackage) throws Exception {
         progress("Moving class " + className + " to package " + newPackage);
@@ -167,7 +179,10 @@ public class RefactoringTools extends AbstractCodeTool {
         }, true);
     }
 
-    @Tool("List all methods in a class")
+    @Tool("""
+    JAVA ONLY: List all methods declared in a specific class within a Java source file.
+    Use this to discover what methods exist in a class before modifying or replacing one.
+    """)
     @ToolPolicy(READONLY)
     public String listMethods(String path, String className) throws Exception {
         progress("📋 Listing methods of class " + className);
@@ -192,7 +207,11 @@ public class RefactoringTools extends AbstractCodeTool {
         }, true);
     }
 
-    @Tool("Update the body of an existing method. Only provide the statements inside the method, without the signature or braces.")
+    @Tool("""
+    JAVA ONLY: Update the body of an existing method in a Java class.
+    Use this to replace only the statements inside a method without touching the signature.
+    Only provide the statements inside the method body, without the signature or surrounding braces.
+    """)
     @ToolPolicy(READWRITE)
     public String updateMethodBody(String path, String className, String methodName, String newBody) throws Exception {
         progress("☕ Updating body of method " + methodName + " in class " + className);
@@ -250,7 +269,12 @@ public class RefactoringTools extends AbstractCodeTool {
         }, true);
     }
 
-    @Tool("Replace a method in a class with new code. Provide the full method definition including signature and body.")
+    @Tool("""
+    JAVA ONLY: Replace an existing method in a Java class with completely new code.
+    Use this when the entire method signature and/or body needs to be replaced.
+    Provide the full method definition including the signature, annotations, and body with braces.
+    Prefer updateMethodBody when only the method body needs to change.
+    """)
     @ToolPolicy(READWRITE)
     public String replaceMethod(String path, String className, String methodName, String newMethodCode) throws Exception {
         progress("☕ Replacing method " + methodName + " in class " + className);

@@ -38,7 +38,11 @@ public class EditorTools extends AbstractCodeTool {
      * @param lineText the text of the new line
      * @return a status message
      */
-    @Tool("Insert a line of code at a given line number (0-based) in a file by path")
+    @Tool("""
+    Insert a new line of text at a given 0-based line number in a file.
+    Use this to add code at a precise location within a file.
+    Line 0 inserts before the first line; use listMethodsInFile first to find the correct line number.
+    """)
     public String insertLineInFile(String path, int lineNumber, String lineText)
             throws Exception {
         progress("✏️ Inserting line at " + lineNumber + " in file: " + path);
@@ -76,7 +80,11 @@ public class EditorTools extends AbstractCodeTool {
      * @param lineText the text to insert as a new line
      * @return status message
      */
-    @Tool("Insert a line of code at a given line number (0-based) in a file by path")
+    @Tool("""
+    Insert a new line of text immediately after the end of a specified Java method or constructor in a file.
+    Use this to append code after a known method without needing to know the exact line number.
+    Prefer this over insertLineInFile when the insertion point is defined by a method name.
+    """)
     public String insertLineAfterMethod(String path, String methodName, String lineText)
             throws Exception {
         progress("✏️ Inserting line after method '" + methodName + "' in file: " + path);
