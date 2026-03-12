@@ -67,6 +67,74 @@ public class ExecutionTools extends AbstractTool {
         return runCommand(testCommand, "Testing");
     }
 
+    @Tool("Run a Java class by its fully qualified class name and return the full output. "
+        + "Use this to execute any Java application or main class in the project.")
+    @ToolPolicy(READWRITE)
+    public String runJavaClass(String mainClass) {
+        String command = resolveRunCommand(mainClass);
+        if (command == null) {
+            return "Cannot run " + mainClass + ": no supported build system (Maven/Gradle) "
+                + "was detected and no compiled JAR was found in the target/ directory. "
+                + "Please build the project first.";
+        }
+        return runCommand(command, "Running " + mainClass);
+    }
+
+    /**
+     * Resolves the command to run {@code mainClass} based on the build system
+     * detected in the project directory.
+     *
+     * @param mainClass the fully qualified name of the class to run
+     * @return the shell command to execute, or {@code null} if it cannot be determined
+     */
+    String resolveRunCommand(String mainClass) {
+        boolean isWindows = System.getProperty("os.name").toLowerCase().contains("win");
+        File basedirFile = new File(basedir);
+
+        // Maven
+        if (new File(basedirFile, "pom.xml").exists()) {
+            String mvn;
+            if (isWindows) {
+                mvn = new File(basedirFile, "mvnw.cmd").exists() ? "mvnw.cmd" : "mvn";
+            } else {
+                mvn = new File(basedirFile, "mvnw").exists() ? "./mvnw" : "mvn";
+            }
+            return mvn + " exec:java -Dexec.mainClass=" + mainClass;
+        }
+
+        // Gradle
+        if (new File(basedirFile, "build.gradle").exists()
+                || new File(basedirFile, "build.gradle.kts").exists()) {
+            String gradle;
+            if (isWindows) {
+                gradle = new File(basedirFile, "gradlew.bat").exists() ? "gradlew.bat" : "gradle";
+            } else {
+                gradle = new File(basedirFile, "gradlew").exists() ? "./gradlew" : "gradle";
+            }
+            return gradle + " run --main-class=" + mainClass;
+        }
+
+        // Ant
+        if (new File(basedirFile, "build.xml").exists()) {
+            return "ant run -Dmain.class=" + mainClass;
+        }
+
+        // Fallback: direct java invocation using any JAR found in target/
+        File targetDir = new File(basedirFile, "target");
+        if (targetDir.isDirectory()) {
+            File[] jars = targetDir.listFiles((dir, name) ->
+                name.endsWith(".jar")
+                && !name.endsWith("-sources.jar")
+                && !name.endsWith("-javadoc.jar")
+            );
+            if (jars != null && jars.length > 0) {
+                return "java -cp \"" + jars[0].getAbsolutePath() + "\" " + mainClass;
+            }
+        }
+
+        return null;
+    }
+
     /**
      * Runs a command in the project directory, streams output, and returns the
      * full log.
