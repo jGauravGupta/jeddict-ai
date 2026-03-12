@@ -40,6 +40,7 @@ import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.stream.Collectors;
 import javax.swing.SwingUtilities;
 import javax.swing.text.AbstractDocument;
 import javax.swing.text.BadLocationException;
@@ -103,8 +104,11 @@ public class JeddictCompletionProvider implements CompletionProvider {
 
     private static final String HIGHLIGHTED_TEXT_KEY = "HIGHLIGHTED_TEXT_KEY";
     private static final String HIGHLIGHTED_TEXT_LOC_KEY = "HIGHLIGHTED_TEXT_LOC_KEY";
+    private static final String HIGHLIGHTED_SUGGESTIONS_KEY = "HIGHLIGHTED_SUGGESTIONS_KEY";
+    private static final String HIGHLIGHTED_SUGGESTION_INDEX_KEY = "HIGHLIGHTED_SUGGESTION_INDEX_KEY";
     private static final String PLACEHOLDER = "${SUGGESTION}";
     private static final Object KEY_PRE_TEXT = new Object();
+    private static final int DEBOUNCE_DELAY_MS = 500;
 
     public OffsetsBag getPreTextBag(Document doc, JTextComponent component) {
         OffsetsBag bag = (OffsetsBag) doc.getProperty(KEY_PRE_TEXT);
@@ -113,36 +117,31 @@ public class JeddictCompletionProvider implements CompletionProvider {
             doc.putProperty(KEY_PRE_TEXT, bag = new OffsetsBag(doc));
             final OffsetsBag offsetsBag = bag;
 
-//            Object stream = doc.getProperty(Document.StreamDescriptionProperty);
-//            if (stream instanceof DataObject) {
-//                TimesCollector.getDefault().reportReference(((DataObject) stream).getPrimaryFile(), "ImportsHighlightsBag", "[M] Imports Highlights Bag", bag);
-//            }
-
             component.addKeyListener(new KeyAdapter() {
                 @Override
                 public void keyPressed(KeyEvent e) {
-                    if (e.getKeyCode() == KeyEvent.VK_ENTER
-                            && (pm.isInlineHintEnabled() || pm.isInlinePromptHintEnabled())) {
-                        try {
-                            Snippet snippet = (Snippet) doc.getProperty(HIGHLIGHTED_TEXT_KEY);
-                            Integer textLocation = (Integer) doc.getProperty(HIGHLIGHTED_TEXT_LOC_KEY);
-                            if (snippet != null && textLocation != null) {
-                                Document doc = component.getDocument();
-                                int caretPosition = component.getCaretPosition();
+                    try {
+                        Snippet snippet = (Snippet) doc.getProperty(HIGHLIGHTED_TEXT_KEY);
+                        Integer textLocation = (Integer) doc.getProperty(HIGHLIGHTED_TEXT_LOC_KEY);
+                        boolean hasSuggestion = snippet != null && textLocation != null;
 
+                        if (hasSuggestion) {
+                            // Tab: accept current suggestion (GitHub Copilot-style)
+                            if (e.getKeyCode() == KeyEvent.VK_TAB
+                                    && (pm.isInlineHintEnabled() || pm.isInlinePromptHintEnabled())) {
+                                Document localDoc = component.getDocument();
+                                int caretPosition = component.getCaretPosition();
                                 if (textLocation.equals(caretPosition)) {
-                                    doc.insertString(caretPosition, snippet.getSnippet(), null);
+                                    localDoc.insertString(caretPosition, snippet.getSnippet(), null);
                                     int lineStart = Utilities.getRowStart(component, caretPosition);
                                     int lineEnd = Utilities.getRowEnd(component, caretPosition + snippet.getSnippet().length());
-
-                                    Reformat reformat = Reformat.get(doc);
+                                    Reformat reformat = Reformat.get(localDoc);
                                     reformat.lock();
                                     try {
                                         reformat.reformat(lineStart, lineEnd);
                                     } finally {
                                         reformat.unlock();
                                     }
-
                                     CancellableTask<WorkingCopy> task = new CancellableTask<WorkingCopy>() {
                                         @Override
                                         public void run(WorkingCopy workingCopy) throws Exception {
@@ -154,24 +153,100 @@ public class JeddictCompletionProvider implements CompletionProvider {
                                         public void cancel() {
                                         }
                                     };
-                                    JavaSource javaSource = JavaSource.forDocument(component.getDocument());
+                                    JavaSource javaSource = JavaSource.forDocument(localDoc);
                                     if (javaSource != null) {
                                         javaSource.runModificationTask(task).commit();
                                     }
                                     e.consume();
                                 }
+                                clearSuggestion(doc, offsetsBag);
+                                return;
                             }
-                        } catch (Exception ex) {
-                            Exceptions.printStackTrace(ex);
+
+                            // Alt+]: cycle to next suggestion
+                            if (e.getKeyCode() == KeyEvent.VK_CLOSE_BRACKET && e.isAltDown()) {
+                                cycleSuggestion(component, doc, offsetsBag, textLocation, 1);
+                                e.consume();
+                                return;
+                            }
+
+                            // Alt+[: cycle to previous suggestion
+                            if (e.getKeyCode() == KeyEvent.VK_OPEN_BRACKET && e.isAltDown()) {
+                                cycleSuggestion(component, doc, offsetsBag, textLocation, -1);
+                                e.consume();
+                                return;
+                            }
                         }
+                    } catch (Exception ex) {
+                        Exceptions.printStackTrace(ex);
                     }
-                    doc.putProperty(HIGHLIGHTED_TEXT_KEY, null);
-                    offsetsBag.clear();
+                    // Any key that is not a standalone modifier (Alt, Ctrl, Shift, Meta): dismiss
+                    // Modifier-only presses must not clear the suggestion so that compound
+                    // shortcuts like Alt+[ and Alt+] still work when Alt is pressed first.
+                    int keyCode = e.getKeyCode();
+                    if (keyCode != KeyEvent.VK_ALT && keyCode != KeyEvent.VK_CONTROL
+                            && keyCode != KeyEvent.VK_SHIFT && keyCode != KeyEvent.VK_META
+                            && keyCode != KeyEvent.VK_ALT_GRAPH) {
+                        clearSuggestion(doc, offsetsBag);
+                    }
                 }
             });
         }
 
         return bag;
+    }
+
+    private void clearSuggestion(Document doc, OffsetsBag offsetsBag) {
+        doc.putProperty(HIGHLIGHTED_TEXT_KEY, null);
+        doc.putProperty(HIGHLIGHTED_SUGGESTIONS_KEY, null);
+        doc.putProperty(HIGHLIGHTED_SUGGESTION_INDEX_KEY, null);
+        offsetsBag.clear();
+    }
+
+    private void cycleSuggestion(JTextComponent component, Document doc, OffsetsBag offsetsBag,
+            int textLocation, int direction) {
+        @SuppressWarnings("unchecked")
+        List<Snippet> suggestions = (List<Snippet>) doc.getProperty(HIGHLIGHTED_SUGGESTIONS_KEY);
+        Integer currentIndex = (Integer) doc.getProperty(HIGHLIGHTED_SUGGESTION_INDEX_KEY);
+        if (suggestions != null && suggestions.size() > 1) {
+            int cur = currentIndex == null ? 0 : currentIndex;
+            // Double-modulo handles negative remainders (e.g. direction=-1, cur=0)
+            int newIndex = ((cur + direction) % suggestions.size() + suggestions.size()) % suggestions.size();
+            showSuggestion(component, doc, textLocation, suggestions, newIndex, offsetsBag);
+        }
+    }
+
+    private void showSuggestion(JTextComponent component, Document doc, int startOffset,
+            List<Snippet> suggestions, int index, OffsetsBag bag) {
+        Snippet snippet = suggestions.get(index);
+        String displayText = suggestions.size() > 1
+                ? snippet.getSnippet() + " [" + (index + 1) + "/" + suggestions.size() + "]"
+                : snippet.getSnippet();
+        OffsetsBag preTextBag = new OffsetsBag(doc);
+        preTextBag.addHighlight(startOffset, startOffset + 1,
+                AttributesUtilities.createImmutable("virtual-text-prepend", displayText));
+        doc.putProperty(HIGHLIGHTED_TEXT_KEY, snippet);
+        doc.putProperty(HIGHLIGHTED_TEXT_LOC_KEY, startOffset);
+        doc.putProperty(HIGHLIGHTED_SUGGESTIONS_KEY, suggestions);
+        doc.putProperty(HIGHLIGHTED_SUGGESTION_INDEX_KEY, index);
+        bag.setHighlights(preTextBag);
+    }
+
+    public void highlightMultiline(JTextComponent component, int caretOffset, List<Snippet> suggestions) {
+        if (suggestions == null || suggestions.isEmpty()) {
+            return;
+        }
+        // showSuggestion updates Swing document properties and OffsetsBag;
+        // both must be touched on the Event Dispatch Thread.
+        SwingUtilities.invokeLater(() -> {
+            try {
+                Document doc = component.getDocument();
+                int startOffset = component.getCaretPosition();
+                showSuggestion(component, doc, startOffset, suggestions, 0, getPreTextBag(doc, component));
+            } catch (Exception e) {
+                Exceptions.printStackTrace(e);
+            }
+        });
     }
 
     @Override
@@ -191,29 +266,56 @@ public class JeddictCompletionProvider implements CompletionProvider {
 
     private final ExecutorService executorService = Executors.newSingleThreadExecutor();
     private Future<?> currentTask;
+    private javax.swing.Timer debounceTimer;
+    // Both reads and writes happen on the EDT (getAutoQueryTypes is EDT, Swing Timer fires on EDT)
+    private volatile JTextComponent debounceComponent;
 
     @Override
     public int getAutoQueryTypes(JTextComponent component, String typedText) {
-        if (typedText.length() == 1
-                && typedText.charAt(0) == '\n') {
-            if (currentTask != null && !currentTask.isDone()) {
-                currentTask.cancel(true);
+        if (typedText.length() == 1) {
+            char ch = typedText.charAt(0);
+            if (ch == '\n') {
+                // Enter key: cancel any in-flight task, then trigger inline query (prompt-aware)
+                if (currentTask != null && !currentTask.isDone()) {
+                    currentTask.cancel(true);
+                }
+                boolean inlineHintEnabled = pm.isInlineHintEnabled();
+                boolean inlinePromptHintEnabled = pm.isInlinePromptHintEnabled();
+                LineScanResult result = inlinePromptHintEnabled ? getPreviousLineUntilSlash(component) : null;
+                boolean shouldExecuteQuery = (result == null && inlineHintEnabled) || (result != null && inlinePromptHintEnabled);
+                if (shouldExecuteQuery) {
+                    currentTask = executorService.submit(() -> {
+                        JeddictCompletionQuery query = new JeddictCompletionQuery(-1, component.getSelectionStart());
+                        if (result != null) {
+                            query.setHintContext(pm.getPrompts().get(result.getFirstWord()) + " - " + result.getSecondWord());
+                        }
+                        query.prepareQuery(component);
+                        query.query(null, component.getDocument(), component.getSelectionStart());
+                    });
+                }
+            } else if (!Character.isISOControl(ch) && pm.isInlineHintEnabled()) {
+                // Regular character: debounced auto-trigger (GitHub Copilot-style).
+                // Cancel any in-flight suggestion task when the user continues typing.
+                if (currentTask != null && !currentTask.isDone()) {
+                    currentTask.cancel(true);
+                }
+                // Reuse a single Timer instance; update the target component and restart.
+                debounceComponent = component;
+                if (debounceTimer == null) {
+                    debounceTimer = new javax.swing.Timer(DEBOUNCE_DELAY_MS, evt -> {
+                        JTextComponent comp = debounceComponent;
+                        if (comp != null) {
+                            currentTask = executorService.submit(() -> {
+                                JeddictCompletionQuery query = new JeddictCompletionQuery(-1, comp.getSelectionStart());
+                                query.prepareQuery(comp);
+                                query.query(null, comp.getDocument(), comp.getSelectionStart());
+                            });
+                        }
+                    });
+                    debounceTimer.setRepeats(false);
+                }
+                debounceTimer.restart();
             }
-            boolean inlineHintEnabled = pm.isInlineHintEnabled();
-            boolean inlinePromptHintEnabled = pm.isInlinePromptHintEnabled();
-            LineScanResult result = inlinePromptHintEnabled ? getPreviousLineUntilSlash(component) : null;
-            boolean shouldExecuteQuery = (result == null && inlineHintEnabled) || (result != null && inlinePromptHintEnabled);
-            if (shouldExecuteQuery) {
-                currentTask = executorService.submit(() -> {
-                    JeddictCompletionQuery query = new JeddictCompletionQuery(-1, component.getSelectionStart());
-                    if (result != null) {
-                        query.setHintContext(pm.getPrompts().get(result.getFirstWord()) + " - " + result.getSecondWord());
-                    }
-                    query.prepareQuery(component);
-                    query.query(null, component.getDocument(), component.getSelectionStart());
-                });
-            }
-
         }
         return 0;
     }
@@ -546,11 +648,10 @@ public class JeddictCompletionProvider implements CompletionProvider {
                         String updateddoc = insertPlaceholderAtCaret(doc, caretOffset, PLACEHOLDER);
                         List<Snippet> sugs = getGhostwriter()
                                 .suggestNextLineCode(classDataContent, LANGUAGE_JAVA, updateddoc, line, projectInfo, hintContext, tree, description);
-                        for (Snippet snippet : sugs) {
-                            if (resultSet == null) {
-                                highlightMultiline(component, caretOffset, snippet);
-                                break;
-                            } else {
+                        if (resultSet == null) {
+                            JeddictCompletionProvider.this.highlightMultiline(component, caretOffset, sugs);
+                        } else {
+                            for (Snippet snippet : sugs) {
                                 resultSet.addItem(createItem(snippet, line, lineTextBeforeCaret, javaToken, kind, doc));
                             }
                         }
@@ -568,11 +669,10 @@ public class JeddictCompletionProvider implements CompletionProvider {
                         String updateddoc = insertPlaceholderAtCaret(doc, caretOffset, PLACEHOLDER);
                         List<Snippet> sugs = getGhostwriter()
                                 .suggestNextLineCode(classDataContent, LANGUAGE_JAVA, updateddoc, line, projectInfo, hintContext, tree, description);;
-                        for (Snippet snippet : sugs) {
-                            if (resultSet == null) {
-                                highlightMultiline(component, caretOffset, snippet);
-                                break;
-                            } else {
+                        if (resultSet == null) {
+                            JeddictCompletionProvider.this.highlightMultiline(component, caretOffset, sugs);
+                        } else {
+                            for (Snippet snippet : sugs) {
                                 resultSet.addItem(createItem(snippet, line, lineTextBeforeCaret, javaToken, kind, doc));
                             }
                         }
@@ -580,11 +680,10 @@ public class JeddictCompletionProvider implements CompletionProvider {
                         String updateddoc = insertPlaceholderAtCaret(doc, caretOffset, PLACEHOLDER);
                         List<Snippet> sugs = getGhostwriter()
                                 .suggestNextLineCode(classDataContent, LANGUAGE_JAVA, updateddoc, line, projectInfo, hintContext, tree, description);
-                        for (Snippet snippet : sugs) {
-                            if (resultSet == null) {
-                                highlightMultiline(component, caretOffset, snippet);
-                                break;
-                            } else {
+                        if (resultSet == null) {
+                            JeddictCompletionProvider.this.highlightMultiline(component, caretOffset, sugs);
+                        } else {
+                            for (Snippet snippet : sugs) {
                                 JeddictItem var = new JeddictItem(null, null, snippet.getSnippet(), snippet.getDescription(), snippet.getImports(), caretOffset, true, false, -1);
                                 resultSet.addItem(var);
                             }
@@ -626,11 +725,10 @@ public class JeddictCompletionProvider implements CompletionProvider {
                         String updateddoc = insertPlaceholderAtCaret(doc, caretOffset, PLACEHOLDER);
                         List<Snippet> sugs = getGhostwriter()
                                 .suggestNextLineCode(classDataContent, LANGUAGE_JAVA, updateddoc, line, projectInfo, hintContext, tree, description);
-                        for (Snippet snippet : sugs) {
-                            if (resultSet == null) {
-                                highlightMultiline(component, caretOffset, snippet);
-                                break;
-                            } else {
+                        if (resultSet == null) {
+                            JeddictCompletionProvider.this.highlightMultiline(component, caretOffset, sugs);
+                        } else {
+                            for (Snippet snippet : sugs) {
                                 JeddictItem var = new JeddictItem(null, null, snippet.getSnippet(), snippet.getDescription(), snippet.getImports(), caretOffset, true, false, -1);
                                 resultSet.addItem(var);
                             }
@@ -641,11 +739,10 @@ public class JeddictCompletionProvider implements CompletionProvider {
                         String updateddoc = insertPlaceholderAtCaret(doc, caretOffset, "${SUGGESTION}");
                         List<Snippet> sugs = getGhostwriter()
                                 .suggestNextLineCode(classDataContent, LANGUAGE_JAVA, updateddoc, line, projectInfo, hintContext, tree, description);
-                        for (Snippet snippet : sugs) {
-                            if (resultSet == null) {
-                                highlightMultiline(component, caretOffset, snippet);
-                                break;
-                            } else {
+                        if (resultSet == null) {
+                            JeddictCompletionProvider.this.highlightMultiline(component, caretOffset, sugs);
+                        } else {
+                            for (Snippet snippet : sugs) {
                                 JeddictItem var = new JeddictItem(null, null, snippet.getSnippet(), snippet.getDescription(), snippet.getImports(), caretOffset, true, false, -1);
                                 resultSet.addItem(var);
                             }
@@ -655,11 +752,10 @@ public class JeddictCompletionProvider implements CompletionProvider {
                         String updateddoc = insertPlaceholderAtCaret(doc, caretOffset, PLACEHOLDER);
                         List<Snippet> sugs = getGhostwriter()
                                 .suggestNextLineCode(classDataContent, LANGUAGE_JAVA, updateddoc, line, projectInfo, hintContext, tree, description);
-                        for (Snippet snippet : sugs) {
-                            if (resultSet == null) {
-                                highlightMultiline(component, caretOffset, snippet);
-                                break;
-                            } else {
+                        if (resultSet == null) {
+                            JeddictCompletionProvider.this.highlightMultiline(component, caretOffset, sugs);
+                        } else {
+                            for (Snippet snippet : sugs) {
                                 JeddictItem var = new JeddictItem(null, null, snippet.getSnippet(), snippet.getDescription(), snippet.getImports(), caretOffset, true, false, -1);
                                 resultSet.addItem(var);
                             }
@@ -690,17 +786,19 @@ public class JeddictCompletionProvider implements CompletionProvider {
                         String updateddoc = insertPlaceholderAtCaret(doc, caretOffset, PLACEHOLDER);
                         sugs = getGhostwriter()
                                 .suggestJavadocOrComment("", updateddoc, line, projectInfo);
-                        for (String snippet : sugs) {
-                            int newcaretOffset = caretOffset;
-                            if (snippet.trim().startsWith(line.trim())) {
-                                newcaretOffset = newcaretOffset - trimLeadingSpaces(line).length();
-                            } else if (snippet.startsWith("* ")) {
-                                snippet = snippet.substring(2);
-                            }
-                            if (resultSet == null) {
-                                highlightMultiline(component, caretOffset, new Snippet(snippet));
-                                break;
-                            } else {
+                        if (resultSet == null) {
+                            List<Snippet> snippetSugs = sugs.stream()
+                                    .map(s -> new Snippet(s.startsWith("* ") ? s.substring(2) : s))
+                                    .collect(Collectors.toList());
+                            JeddictCompletionProvider.this.highlightMultiline(component, caretOffset, snippetSugs);
+                        } else {
+                            for (String snippet : sugs) {
+                                int newcaretOffset = caretOffset;
+                                if (snippet.trim().startsWith(line.trim())) {
+                                    newcaretOffset = newcaretOffset - trimLeadingSpaces(line).length();
+                                } else if (snippet.startsWith("* ")) {
+                                    snippet = snippet.substring(2);
+                                }
                                 JeddictItem var = new JeddictItem(null, null, snippet, "", Collections.emptyList(), newcaretOffset, true, false, -1);
                                 resultSet.addItem(var);
                             }
@@ -715,11 +813,10 @@ public class JeddictCompletionProvider implements CompletionProvider {
                         SQLCompletion sqlCompletion = new SQLCompletion(sQLEditorSupport);
                         String updateddoc = insertPlaceholderAtCaret(doc, caretOffset, "${SUGGESTION}");
                         final List<Snippet> sugs = getGhostwriter().suggestSQLQueries(updateddoc, sqlCompletion.getMetaData(), description);
-                        for (Snippet snippet : sugs) {
-                            if (resultSet == null) {
-                                highlightMultiline(component, caretOffset, snippet);
-                                break;
-                            } else {
+                        if (resultSet == null) {
+                            JeddictCompletionProvider.this.highlightMultiline(component, caretOffset, sugs);
+                        } else {
+                            for (Snippet snippet : sugs) {
                                 JeddictItem var = createItem(snippet, line, lineTextBeforeCaret, javaToken, null, doc);
                                 resultSet.addItem(var);
                             }
@@ -728,11 +825,10 @@ public class JeddictCompletionProvider implements CompletionProvider {
                         String updateddoc = insertPlaceholderAtCaret(doc, caretOffset, PLACEHOLDER);
                         List<Snippet> sugs = getGhostwriter()
                                 .suggestNextLineCode(MIME_TYPE_DESCRIPTIONS.get(mimeType), "", updateddoc, line, projectInfo, hintContext, null, description);
-                        for (Snippet snippet : sugs) {
-                            if (resultSet == null) {
-                                highlightMultiline(component, caretOffset, snippet);
-                                break;
-                            } else {
+                        if (resultSet == null) {
+                            JeddictCompletionProvider.this.highlightMultiline(component, caretOffset, sugs);
+                        } else {
+                            for (Snippet snippet : sugs) {
                                 JeddictItem var = createItem(snippet, line, lineTextBeforeCaret, javaToken, null, doc);
                                 resultSet.addItem(var);
                             }
@@ -742,24 +838,9 @@ public class JeddictCompletionProvider implements CompletionProvider {
             } catch (Exception e) {
                 Exceptions.printStackTrace(e);
             } finally {
-                resultSet.finish();
-            }
-        }
-
-        public void highlightMultiline(JTextComponent component, int caretOffset, Snippet snippet) {
-            try {
-                Document doc = component.getDocument();
-                int startOffset = component.getCaretPosition();
-                OffsetsBag preTextBag = new OffsetsBag(doc);
-                preTextBag.addHighlight(startOffset, startOffset + 1,
-                        AttributesUtilities.createImmutable("virtual-text-prepend", snippet.getSnippet()));
-                doc.putProperty(HIGHLIGHTED_TEXT_KEY, snippet);
-                doc.putProperty(HIGHLIGHTED_TEXT_LOC_KEY, startOffset);
-
-                getPreTextBag(doc, component).clear();
-                getPreTextBag(doc, component).setHighlights(preTextBag);
-            } catch (Exception e) {
-                e.printStackTrace(); // Handle the exception appropriately
+                if (resultSet != null) {
+                    resultSet.finish();
+                }
             }
         }
 
